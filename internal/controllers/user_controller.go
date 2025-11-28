@@ -13,6 +13,40 @@ type UserController struct {
 	Repo *models.UserRepository
 }
 
+func (c *UserController) Login(w http.ResponseWriter, r *http.Request) {
+	var credentials struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		log.Print("credentials.Email: ", credentials.Email)
+		log.Print("\ncredentials.Paassword: ", credentials.Password)
+		log.Print("\nr.Body ", r.Body)
+		http.Error(w, "Invalid Credentials (Re-enter)", http.StatusBadRequest)
+		return
+	}
+
+	user, err := c.Repo.FetchUserByEmail(credentials.Email)
+	if err != nil {
+		http.Error(w, "Invalid Email or Password", http.StatusUnauthorized)
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(credentials.Password))
+	if err != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "You are succesfully logged in",
+		"user_id": user.ID,
+		"email":   user.Email,
+	})
+}
+
 func (c *UserController) Register(w http.ResponseWriter, r *http.Request) {
 	var user models.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
@@ -24,7 +58,6 @@ func (c *UserController) Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid Email or Password", http.StatusBadRequest)
 		return
 	}
-
 	hashed, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Password couldnt be hashed", http.StatusInternalServerError)
