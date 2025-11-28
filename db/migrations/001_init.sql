@@ -5,3 +5,5 @@ CREATE TABLE if NOT EXISTS users (
     age INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+select * fr
