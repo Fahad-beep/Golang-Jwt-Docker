@@ -3,48 +3,16 @@ package controllers
 import (
 	"encoding/json"
 	"log"
+	"main/internal/auth"
 	"main/internal/models"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserController struct {
 	Repo *models.UserRepository
-}
-
-func (c *UserController) Login(w http.ResponseWriter, r *http.Request) {
-	var credentials struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
-		log.Print("credentials.Email: ", credentials.Email)
-		log.Print("\ncredentials.Paassword: ", credentials.Password)
-		log.Print("\nr.Body ", r.Body)
-		http.Error(w, "Invalid Credentials (Re-enter)", http.StatusBadRequest)
-		return
-	}
-
-	user, err := c.Repo.FetchUserByEmail(credentials.Email)
-	if err != nil {
-		http.Error(w, "Invalid Email or Password", http.StatusUnauthorized)
-		return
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(credentials.Password))
-	if err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "You are succesfully logged in",
-		"user_id": user.ID,
-		"email":   user.Email,
-	})
 }
 
 func (c *UserController) Register(w http.ResponseWriter, r *http.Request) {
@@ -77,5 +45,71 @@ func (c *UserController) Register(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "user succesfully registered",
 		"user_id": user.ID,
+	})
+}
+
+func (c *UserController) Login(w http.ResponseWriter, r *http.Request) {
+	var credentials struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&credentials); err != nil {
+		log.Print("credentials.Email: ", credentials.Email)
+		log.Print("\ncredentials.Paassword: ", credentials.Password)
+		log.Print("\nr.Body ", r.Body)
+		http.Error(w, "Invalid Credentials (Re-enter)", http.StatusBadRequest)
+		return
+	}
+
+	user, err := c.Repo.FetchUserByEmail(credentials.Email)
+	if err != nil {
+		http.Error(w, "Invalid Email or Password", http.StatusUnauthorized)
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(credentials.Password))
+	if err != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	accessToken, _ := auth.CreateAccessToken(user.ID, user.Email)
+	refreshToken, _ := auth.GenerateRefereshToken()
+
+	err = c.Repo.StoreRefreshTokens(user.ID, refreshToken, time.Now().Add(time.Hour*24*7))
+	if err != nil {
+		http.Error(w, "Server Error (failed to save hashed token in DB)", http.StatusInternalServerError)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":      "You are succesfully logged in",
+		"user":         user,
+		"accessToken":  accessToken,
+		"refreshToken": refreshToken,
+	})
+}
+
+func (c *UserController) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid Request (failed to send correct token to refresh)", http.StatusBadRequest)
+		return
+	}
+
+	user, err := c.Repo.ValidateRefreshToken(req.RefreshToken)
+	if err != nil {
+		http.Error(w, "Invalid Or Session Expired", http.StatusUnauthorized)
+		return
+	}
+
+	accessToken, _ := auth.CreateAccessToken(user.ID, user.Email)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"access_token": accessToken,
 	})
 }

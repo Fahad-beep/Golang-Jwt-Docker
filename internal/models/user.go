@@ -1,12 +1,17 @@
 package models
 
-import "database/sql"
+import (
+	"database/sql"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type User struct {
-	ID       int    `json:"id"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Age      int    `json:"age"`
+	ID       uuid.UUID `json:"id"`
+	Email    string    `json:"email"`
+	Password string    `json:"password"`
+	Age      int       `json:"age"`
 }
 
 type UserRepository struct {
@@ -32,4 +37,23 @@ func (r *UserRepository) CreateUser(user *User) error {
 	}
 	return nil
 
+}
+
+func (r *UserRepository) StoreRefreshTokens(userID uuid.UUID, rawToken string, expiryAt time.Time) error {
+	query := `INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`
+	_, err := r.DB.Exec(query, userID, rawToken, expiryAt)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *UserRepository) ValidateRefreshToken(rawToken string) (*User, error) {
+	query := "SELECT u.id, u.email FROM refresh_tokens rt JOIN users u ON rt.user_id = u.id WHERE rt.is_invoked = FALSE AND rt.expires_at > NOW() AND token_hash = $1"
+	user := &User{}
+	err := r.DB.QueryRow(query, rawToken).Scan(&user.ID, &user.Email)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }

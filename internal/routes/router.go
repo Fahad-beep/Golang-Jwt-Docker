@@ -20,6 +20,7 @@ func SetupRouter(db *sql.DB) *chi.Mux {
 		r.Route("/user", func(r chi.Router) {
 			r.Post("/register", userController.Register)
 			r.Post("/login", userController.Login)
+			r.Post("/refresh", userController.Refresh)
 		})
 	})
 	return r
